@@ -1,46 +1,96 @@
 
 import chess.pgn
 import os
-from threading import Thread
-import time
+import sys
+import argparse
+from pathlib import Path
 
-#re-writes all the files into the new directory, using a unique thread id and an index for a new name
-def reformat_games( file_names, new_dir, thread_idx ):
-    file_name_idx = 0
-    #Iterate over all file names
-    while len( file_names ) > 0:
-        pgn_fh = open( file_names.pop() )
-        #iterate over all games in file
+def reformat_single_pgn(input_file, output_dir):
+    """
+    Reformat a single large PGN file into individual game files.
+    
+    Args:
+        input_file: Path to the input PGN file
+        output_dir: Directory to write individual game files
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    print(f"Reformatting {input_file} to {output_dir}")
+    
+    with open(input_file, 'r') as pgn_fh:
+        game_idx = 0
         while True:
-            game = chess.pgn.read_game( pgn_fh )
+            game = chess.pgn.read_game(pgn_fh)
             if not game:
                 break
-            print( game, file=open( os.path.join( new_dir, '{}_{}.pgn'.format( thread_idx, file_name_idx ) ), 'w' ), end='\n\n' )
-            file_name_idx += 1
-            if file_name_idx % 1000 == 0:
-                print( 'Thread {} wrote {} train pngs'.format( thread_idx, file_name_idx ) )
+            
+            # Write each game to a separate file
+            output_file = os.path.join(output_dir, f'{game_idx}.pgn')
+            with open(output_file, 'w') as game_fh:
+                print(game, file=game_fh, end='\n\n')
+            
+            game_idx += 1
+            if game_idx % 1000 == 0:
+                print(f'Wrote {game_idx} games')
+    
+    print(f'Completed reformatting: {game_idx} total games')
 
-#get all pgns
-ccrl_dir = '/home/ubuntu/pytorch-alpha-zero/cclr-data/cclr/train'
-all_file_names = os.listdir( ccrl_dir )
-for i in range( len( all_file_names ) ):
-    all_file_names[ i ] = os.path.join( ccrl_dir, all_file_names[ i ] ) 
+def reformat_directory(input_dir, output_dir):
+    """
+    Reformat all PGN files in a directory.
+    
+    Args:
+        input_dir: Directory containing PGN files
+        output_dir: Directory to write reformatted files
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    pgn_files = [f for f in os.listdir(input_dir) if f.endswith('.pgn')]
+    print(f"Found {len(pgn_files)} PGN files in {input_dir}")
+    
+    game_idx = 0
+    for pgn_file in pgn_files:
+        input_path = os.path.join(input_dir, pgn_file)
+        print(f"Processing {input_path}")
+        
+        with open(input_path, 'r') as pgn_fh:
+            while True:
+                game = chess.pgn.read_game(pgn_fh)
+                if not game:
+                    break
+                
+                output_file = os.path.join(output_dir, f'{game_idx}.pgn')
+                with open(output_file, 'w') as game_fh:
+                    print(game, file=game_fh, end='\n\n')
+                
+                game_idx += 1
+                if game_idx % 1000 == 0:
+                    print(f'Wrote {game_idx} games')
+    
+    print(f'Completed reformatting: {game_idx} total games')
 
-#the new dir
-reformat_dir = '/home/ubuntu/pytorch-alpha-zero/cclr-data/train'
+def main():
+    parser = argparse.ArgumentParser(description='Reformat PGN files for AlphaZero training')
+    parser.add_argument('input', help='Input PGN file or directory')
+    parser.add_argument('output', help='Output directory for reformatted files')
+    
+    args = parser.parse_args()
+    
+    input_path = Path(args.input)
+    output_path = Path(args.output)
+    
+    if not input_path.exists():
+        print(f"Error: Input path {input_path} does not exist")
+        sys.exit(1)
+    
+    if input_path.is_file():
+        reformat_single_pgn(str(input_path), str(output_path))
+    elif input_path.is_dir():
+        reformat_directory(str(input_path), str(output_path))
+    else:
+        print(f"Error: {input_path} is neither a file nor directory")
+        sys.exit(1)
 
-#launch some threads
-threads = []
-num_threads = 50
-for i in range( num_threads ):
-    files_per_thread = int( len( all_file_names ) / num_threads )
-    threads.append( Thread( target=reformat_games,
-        args=( all_file_names[ i * files_per_thread : (i + 1) * files_per_thread ],
-            reformat_dir, i ) ) )
-    threads[ i ].start()
-    time.sleep( 0.0001 )
-
-for i in range( num_threads ):
-    threads[ i ].join()
-
+if __name__ == "__main__":
+    main()
 

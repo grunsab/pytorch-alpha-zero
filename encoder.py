@@ -2,8 +2,10 @@
 import chess
 import numpy as np
 import torch
+from device_utils import get_optimal_device
 
-cuda = False
+# Get the optimal device once at module level
+DEVICE, DEVICE_STR = get_optimal_device()
 
 def parseResult( result ):
     """
@@ -339,9 +341,8 @@ def callNeuralNetwork( board, neuralNetwork ):
         
     mask = torch.from_numpy( mask )[ None, ... ]
 
-    if cuda:
-        position = position.cuda()
-        mask = mask.cuda()
+    position = position.to(DEVICE)
+    mask = mask.to(DEVICE)
 
     value, policy = neuralNetwork( position, policyMask=mask )
     
@@ -380,9 +381,8 @@ def callNeuralNetworkBatched( boards, neuralNetwork ):
 
         masks[ i ] = torch.from_numpy( mask )
 
-    if cuda:
-        inputs = inputs.cuda()
-        masks = masks.cuda()
+    inputs = inputs.to(DEVICE)
+    masks = masks.to(DEVICE)
 
     value, policy = neuralNetwork( inputs, policyMask=masks )
  

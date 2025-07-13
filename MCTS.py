@@ -390,7 +390,7 @@ class Root( Node ):
                 
                 node.sum_Q += 1. - new_Q
 
-        for edge in edge_paths[ i ]:
+        for edge in edge_path:
                 
             if edge != None:
                edge.clearVirtualLoss()

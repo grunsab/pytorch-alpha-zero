@@ -6,23 +6,32 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from CCRLDataset import CCRLDataset
 from AlphaZeroNetwork import AlphaZeroNet
+from device_utils import get_optimal_device, optimize_for_device, get_batch_size_for_device, get_num_workers_for_device
 
 #Training params
 num_epochs = 40
 num_blocks = 10
 num_filters = 128
-ccrl_dir = '/home/ubuntu/pytorch-alpha-zero/ccrl/reformated'
+ccrl_dir = os.path.expanduser('~/ccrl/reformated')  # Use expanduser for cross-platform compatibility
 logmode=True
-cuda=False
 
 def train():
+    # Get optimal device and configure for training
+    device, device_str = get_optimal_device()
+    print(f'Using device: {device_str}')
+    
+    # Optimize batch size and num_workers for the device
+    batch_size = get_batch_size_for_device()
+    num_workers = get_num_workers_for_device()
+    print(f'Batch size: {batch_size}, Workers: {num_workers}')
+    
     train_ds = CCRLDataset( ccrl_dir )
-    train_loader = DataLoader( train_ds, batch_size=256, shuffle=True, num_workers=48 )
+    train_loader = DataLoader( train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers )
 
-    if cuda:
-        alphaZeroNet = AlphaZeroNet( num_blocks, num_filters ).cuda()
-    else:
-        alphaZeroNet = AlphaZeroNet( num_blocks, num_filters )
+    # Create and optimize model for the device
+    alphaZeroNet = AlphaZeroNet( num_blocks, num_filters )
+    alphaZeroNet = optimize_for_device(alphaZeroNet, device)
+    
     optimizer = optim.Adam( alphaZeroNet.parameters() )
     mseLoss = nn.MSELoss()
 
@@ -35,14 +44,10 @@ def train():
 
             optimizer.zero_grad()
 
-            if cuda:
-                position = data[ 'position' ].cuda()
-                valueTarget = data[ 'value' ].cuda()
-                policyTarget = data[ 'policy' ].cuda()
-            else:
-                position = data[ 'position' ]
-                valueTarget = data[ 'value' ]
-                policyTarget = data[ 'policy' ]
+            # Move data to device
+            position = data[ 'position' ].to(device)
+            valueTarget = data[ 'value' ].to(device)
+            policyTarget = data[ 'policy' ].to(device)
 
             # You can manually examine some the training data here
 

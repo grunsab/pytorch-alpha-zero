@@ -5,6 +5,7 @@ import MCTS
 import torch
 import AlphaZeroNetwork
 import time
+from device_utils import get_optimal_device, optimize_for_device
 
 def tolist( move_generator ):
     """
@@ -23,20 +24,21 @@ def tolist( move_generator ):
 
 def main( modelFile, mode, color, num_rollouts, num_threads, fen, verbose ):
     
+    # Get optimal device
+    device, device_str = get_optimal_device()
+    print(f'Using device: {device_str}')
+    
     #prepare neural network
     alphaZeroNet = AlphaZeroNetwork.AlphaZeroNet( 20, 256 )
 
-    #toggle for cpu/gpu
-    cuda = False
-    if cuda:
-        weights = torch.load( modelFile )
-    else:
+    # Load weights with proper device mapping
+    if device.type == 'cpu':
         weights = torch.load( modelFile, map_location=torch.device('cpu') )
+    else:
+        weights = torch.load( modelFile, map_location=device )
 
     alphaZeroNet.load_state_dict( weights )
-
-    if cuda:
-        alphaZeroNet = alphaZeroNet.cuda()
+    alphaZeroNet = optimize_for_device(alphaZeroNet, device)
 
     for param in alphaZeroNet.parameters():
         param.requires_grad = False

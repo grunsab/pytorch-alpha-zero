@@ -19,7 +19,7 @@ class ConvBlock( nn.Module ):
         self.bn1 = nn.BatchNorm2d( num_filters )
         self.relu1 = nn.ReLU()
 
-    def __call__( self, x ):
+    def forward( self, x ):
         """
         Args:
             x (torch.Tensor) the tensor to apply the layers to.
@@ -51,7 +51,7 @@ class ResidualBlock( nn.Module ):
         self.bn2 = nn.BatchNorm2d( num_filters )
         self.relu2 = nn.ReLU()
 
-    def __call__( self, x ):
+    def forward( self, x ):
         """
         Args:
             x (torch.Tensor) the tensor to apply the layers to.
@@ -88,7 +88,7 @@ class ValueHead( nn.Module ):
         self.fc2 = nn.Linear( 256, 1 )
         self.tanh1 = nn.Tanh()
 
-    def __call__( self, x ):
+    def forward( self, x ):
         """
         Args:
             x (torch.Tensor) the tensor to apply the layers to.
@@ -121,7 +121,7 @@ class PolicyHead( nn.Module ):
         self.relu1 = nn.ReLU()
         self.fc1 = nn.Linear( 128, 4608 )
     
-    def __call__( self, x ):
+    def forward( self, x ):
         """
         Args:
             x (torch.Tensor) the tensor to apply the layers to.
@@ -164,7 +164,7 @@ class AlphaZeroNet( nn.Module ):
         
         self.crossEntropyLoss = nn.CrossEntropyLoss()
 
-    def __call__( self, x, valueTarget=None, policyTarget=None, policyMask=None ):
+    def forward( self, x, valueTarget=None, policyTarget=None, policyMask=None ):
         """
         Args:
             x (torch.Tensor) the input tensor.
