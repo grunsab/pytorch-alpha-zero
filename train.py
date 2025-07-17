@@ -10,8 +10,8 @@ from device_utils import get_optimal_device, optimize_for_device, get_batch_size
 
 #Training params
 num_epochs = 40
-num_blocks = 10
-num_filters = 128
+num_blocks = 20
+num_filters = 256
 ccrl_dir = os.path.expanduser('~/ccrl/reformated')  # Use expanduser for cross-platform compatibility
 logmode=True
 

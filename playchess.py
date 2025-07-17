@@ -37,6 +37,8 @@ def main( modelFile, mode, color, num_rollouts, num_threads, fen, verbose ):
     else:
         weights = torch.load( modelFile, map_location=device )
 
+    
+
     alphaZeroNet.load_state_dict( weights )
     alphaZeroNet = optimize_for_device(alphaZeroNet, device)
 
