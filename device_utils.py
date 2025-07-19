@@ -139,3 +139,60 @@ def get_num_workers_for_device():
     else:  # CPU
         # For CPU training, use fewer workers to avoid overhead
         return min(cpu_count // 2, 4)
+
+def get_gpu_count():
+    """
+    Get the number of available GPUs.
+    
+    Returns:
+        int: Number of available GPUs
+    """
+    if torch.cuda.is_available():
+        return torch.cuda.device_count()
+    return 0
+
+def get_distributed_batch_size(base_batch_size, world_size):
+    """
+    Calculate the batch size per process for distributed training.
+    
+    Args:
+        base_batch_size: Total batch size across all processes
+        world_size: Number of processes
+        
+    Returns:
+        int: Batch size per process
+    """
+    return base_batch_size // world_size
+
+def setup_distributed_device(rank):
+    """
+    Set up device for distributed training.
+    
+    Args:
+        rank: Process rank
+        
+    Returns:
+        torch.device: Device for this process
+        str: Device description string
+    """
+    if torch.cuda.is_available() and rank < torch.cuda.device_count():
+        torch.cuda.set_device(rank)
+        device = torch.device(f'cuda:{rank}')
+        gpu_name = torch.cuda.get_device_name(rank)
+        device_str = f"CUDA GPU {rank}: {gpu_name}"
+        return device, device_str
+    else:
+        device = torch.device('cpu')
+        device_str = f"CPU (Process {rank})"
+        return device, device_str
+
+def get_distributed_backend():
+    """
+    Get the recommended backend for distributed training based on available hardware.
+    
+    Returns:
+        str: Backend name ('nccl' for GPUs, 'gloo' for CPUs)
+    """
+    if torch.cuda.is_available():
+        return 'nccl'
+    return 'gloo'
