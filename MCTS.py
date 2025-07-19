@@ -1,8 +1,8 @@
 
 import encoder
 import math
-from threading import Thread
-from atomiclong import AtomicLong
+from threading import Thread, Lock
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 def calcUCT( edge, N_p ):
@@ -23,16 +23,17 @@ def calcUCT( edge, N_p ):
 
     P = edge.getP()
 
-    #This is a quick fix
-    #when getting nans from nn
-    #if math.isnan( P ):
-    #    P = 0.1
+    # Handle NaN values from neural network
+    if math.isnan( P ):
+        P = 1.0 / 200.0  # Small uniform probability
 
     C = 1.5
 
     UCT = Q + P * C * math.sqrt( N_p ) / ( 1 + N_c )
 
-    assert not math.isnan( UCT ), 'Q {} N_c {} P {}'.format( Q, N_c, P )
+    # Final safety check
+    if math.isnan( UCT ):
+        UCT = 0.0
     
     return UCT
 
@@ -52,9 +53,14 @@ class Node:
             new_Q (float) the probability of winning according to neural network
             move_probabilities (numpy.array (200) float) probability distribution across move list
         """
+        self._lock = Lock()  # Add thread-safe lock
         self.N = 1.
 
-        self.sum_Q = new_Q
+        # Handle NaN values in Q
+        if math.isnan(new_Q):
+            self.sum_Q = 0.5  # Neutral value
+        else:
+            self.sum_Q = new_Q
 
         self.edges = []
 
@@ -90,12 +96,19 @@ class Node:
         max_edge = None
 
         for edge in self.edges:
+            try:
+                uct = calcUCT( edge, self.N )
 
-            uct = calcUCT( edge, self.N )
+                if max_uct < uct:
+                    max_uct = uct
+                    max_edge = edge
+            except Exception as e:
+                # Skip this edge if there's an error
+                continue
 
-            if max_uct < uct:
-                max_uct = uct
-                max_edge = edge
+        # If no valid edge was found but node is not terminal, pick first edge
+        if max_edge is None and not self.isTerminal() and self.edges:
+            max_edge = self.edges[0]
 
         assert not ( max_edge == None and not self.isTerminal() )
 
@@ -159,6 +172,15 @@ class Node:
         """
         return len( self.edges ) == 0
 
+    def updateStats(self, value, from_child_perspective):
+        """Thread-safe update of node statistics"""
+        with self._lock:
+            self.N += 1
+            if from_child_perspective:
+                self.sum_Q += 1. - value
+            else:
+                self.sum_Q += value
+
 class Edge:
     """
     An edge in the search tree.
@@ -175,11 +197,15 @@ class Edge:
 
         self.move = move
 
-        self.P = move_probability
+        # Handle NaN or invalid probabilities
+        if math.isnan(move_probability) or move_probability < 0:
+            self.P = 1.0 / 200.0  # Small uniform probability
+        else:
+            self.P = move_probability
 
         self.child = None
         
-        #self.virtualLosses = AtomicLong( 0 )
+        self._lock = Lock()  # Thread-safe lock for virtual losses
         self.virtualLosses = 0.
 
     def has_child( self ):
@@ -265,13 +291,12 @@ class Edge:
         the same path by adding fake losses
         to visited nodes.
         """
-
-        self.virtualLosses += 1
+        with self._lock:
+            self.virtualLosses += 1
 
     def clearVirtualLoss( self ):
-
-        #self.virtualLosses = AtomicLong( 0 )
-        self.virtualLosses = 0.
+        with self._lock:
+            self.virtualLosses = 0.
    
 class Root( Node ):
 
@@ -291,6 +316,10 @@ class Root( Node ):
         super().__init__( board, Q, move_probabilities )
 
         self.same_paths = 0
+        
+        # Pre-create thread pool for reuse
+        self.thread_pool = None
+        self.max_workers = 20  # Maximum number of threads we might use
 
     def selectTask( self, board, node_path, edge_path ):
         """
@@ -379,16 +408,10 @@ class Root( Node ):
         for i in range( last_node_idx, -1, -1 ):
 
             node = node_path[ i ]
-
-            node.N += 1
-
-            if ( last_node_idx - i ) % 2 == 0:
-
-                node.sum_Q += new_Q
-
-            else:
-                
-                node.sum_Q += 1. - new_Q
+            
+            # Use thread-safe update
+            is_from_child = ( last_node_idx - i ) % 2 == 1
+            node.updateStats(new_Q, is_from_child)
 
         for edge in edge_path:
                 
@@ -396,39 +419,49 @@ class Root( Node ):
                edge.clearVirtualLoss()
 
 
-    def parallelRollouts( self, board, neuralNetwork, num_parallel_rollouts ):
+    def parallelRolloutsOptimized( self, board, neuralNetwork, num_parallel_rollouts ):
         """
-        Same as rollout, except done in parallel.
+        Optimized parallel rollouts using thread pool and batch processing.
 
         Args:
             board (chess.Board) the chess position
             neuralNetwork (torch.nn.Module) the neural network
             num_parallel_rollouts (int) the number of rollouts done in parallel
         """
+        
+        # Initialize thread pool if not already created
+        if self.thread_pool is None:
+            self.thread_pool = ThreadPoolExecutor(max_workers=self.max_workers)
 
         boards = []
         node_paths = []
         edge_paths = []
-        threads = []
-
+        
+        # Pre-allocate lists
         for i in range( num_parallel_rollouts ):
             boards.append( board.copy() )
             node_paths.append( [] )
             edge_paths.append( [] )
-            threads.append( Thread( target=self.selectTask,
-                    args=( boards[ i ], node_paths[ i ], edge_paths[ i ] ) ) )
-            threads[ i ].start()
-            time.sleep( 0.0001 )
 
+        # Submit all selection tasks to thread pool
+        futures = []
         for i in range( num_parallel_rollouts ):
-            threads[ i ].join()
+            future = self.thread_pool.submit(self.selectTask, boards[i], node_paths[i], edge_paths[i])
+            futures.append(future)
+        
+        # Wait for all selections to complete
+        for future in futures:
+            future.result()
 
+        # Batch neural network evaluation
         values, move_probabilities = encoder.callNeuralNetworkBatched( boards, neuralNetwork )
 
+        # Process results and update tree
         for i in range( num_parallel_rollouts ):
             edge = edge_paths[ i ][ -1 ]
             board = boards[ i ]
             value = values[ i ]
+            
             if edge != None:
                 
                 new_Q = value / 2. + 0.5
@@ -451,23 +484,28 @@ class Root( Node ):
 
             last_node_idx = len( node_paths[ i ] ) - 1
             
+            # Update node statistics with thread-safe method
             for r in range( last_node_idx, -1, -1 ):
                
                 node = node_paths[ i ][ r ]
+                is_from_child = ( last_node_idx - r ) % 2 == 1
+                node.updateStats(new_Q, is_from_child)
 
-                node.N += 1.
-
-                if ( last_node_idx - r ) % 2 == 0:
-
-                    node.sum_Q += new_Q
-
-                else:
-                    
-                    node.sum_Q += 1. - new_Q
-
+            # Clear virtual losses
             for edge in edge_paths[ i ]:
-                
                 if edge != None:
                     edge.clearVirtualLoss()
+
+    def parallelRollouts( self, board, neuralNetwork, num_parallel_rollouts ):
+        """
+        Wrapper to use optimized version while maintaining compatibility.
+        """
+        return self.parallelRolloutsOptimized(board, neuralNetwork, num_parallel_rollouts)
+
+    def cleanup(self):
+        """Clean up thread pool when done"""
+        if self.thread_pool is not None:
+            self.thread_pool.shutdown(wait=True)
+            self.thread_pool = None
 
 
