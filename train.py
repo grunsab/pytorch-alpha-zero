@@ -9,7 +9,7 @@ from AlphaZeroNetwork import AlphaZeroNet
 from device_utils import get_optimal_device, optimize_for_device, get_batch_size_for_device, get_num_workers_for_device
 
 #Training params
-num_epochs = 40
+num_epochs = 500
 num_blocks = 20
 num_filters = 256
 ccrl_dir = os.path.expanduser('~/ccrl/reformated')  # Use expanduser for cross-platform compatibility
