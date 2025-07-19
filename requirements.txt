@@ -4,3 +4,4 @@ numpy>=1.21.0
 flask>=2.0.0
 atomic-py>=1.0.0
 py7zr>=0.20.0
+tqdm
