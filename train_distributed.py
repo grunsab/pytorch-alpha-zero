@@ -16,7 +16,7 @@ import argparse
 num_epochs = 500
 num_blocks = 20
 num_filters = 256
-ccrl_dir = os.path.expanduser('~/ccrl/reformated')
+ccrl_dir = os.path.expanduser('ccrl/reformated')
 logmode = True
 
 def setup(rank, world_size, backend='nccl', init_method='env://'):
