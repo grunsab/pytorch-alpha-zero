@@ -140,31 +140,41 @@ class MultiGPUMCTS:
             board: Current board state
             num_rollouts: Number of rollouts to perform
         """
+        print(f"Starting {num_rollouts} MCTS rollouts...")
         rollout_threads = []
+        self.completed_rollouts = 0
+        self.rollout_lock = Lock()
         
         # Distribute rollouts across threads
         rollouts_per_thread = max(1, num_rollouts // (self.num_gpus * 4))
         
         for i in range(0, num_rollouts, rollouts_per_thread):
             batch_size = min(rollouts_per_thread, num_rollouts - i)
-            thread = Thread(target=self._rollout_batch, args=(board, batch_size))
+            thread = Thread(target=self._rollout_batch, args=(board, batch_size, num_rollouts))
             thread.start()
             rollout_threads.append(thread)
         
         # Wait for all rollouts to complete
         for thread in rollout_threads:
             thread.join()
+        
+        print(f"Completed {num_rollouts} rollouts")
     
-    def _rollout_batch(self, board, batch_size):
+    def _rollout_batch(self, board, batch_size, total_rollouts):
         """
         Perform a batch of rollouts.
         
         Args:
             board: Initial board state
             batch_size: Number of rollouts in this batch
+            total_rollouts: Total number of rollouts for progress reporting
         """
-        for _ in range(batch_size):
+        for i in range(batch_size):
             self._single_rollout(board.copy())
+            with self.rollout_lock:
+                self.completed_rollouts += 1
+                if self.completed_rollouts % 1000 == 0:
+                    print(f"Progress: {self.completed_rollouts}/{total_rollouts} rollouts completed ({100*self.completed_rollouts/total_rollouts:.1f}%)")
     
     def _single_rollout(self, board):
         """
