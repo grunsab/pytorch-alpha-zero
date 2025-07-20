@@ -12,7 +12,7 @@ from device_utils import get_optimal_device, optimize_for_device, get_batch_size
 num_epochs = 500
 num_blocks = 20
 num_filters = 256
-ccrl_dir = os.path.abspath('ccrl/reformated')  # Use expanduser for cross-platform compatibility
+ccrl_dir = os.path.abspath('ccrl/reformated/')  # Use expanduser for cross-platform compatibility
 logmode=True
 
 def train():
@@ -32,7 +32,7 @@ def train():
     alphaZeroNet = AlphaZeroNet( num_blocks, num_filters )
     alphaZeroNet = optimize_for_device(alphaZeroNet, device)
     
-    optimizer = optim.Adam( alphaZeroNet.parameters(), lr=0.00033 )
+    optimizer = optim.Adam( alphaZeroNet.parameters(), lr=0.001 )
     mseLoss = nn.MSELoss()
 
     print( 'Starting training' )
