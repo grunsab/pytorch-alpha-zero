@@ -1,7 +1,7 @@
 
 # A chess engine based on the AlphaZero algorithm
 
-This is a pytorch implementation of Google Deep Mind's AlphaZero algorithm for chess. It's a fork of another GitHub project that sets the framework for this, but it adds perforamce improvements.
+This is a pytorch implementation of Google Deep Mind's AlphaZero algorithm for chess. It's a fork of another GitHub project that sets the framework for this, but it adds performance improvements.
 
 ## Live
 
