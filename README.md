@@ -23,6 +23,9 @@ The current position is displayed with an ascii chess board. Enter your moves in
 
 Download the [CCRL Dataset](https://lczero.org/blog/2018/09/a-standard-dataset/), reformat it using `reformat.py`and run `train.py`.
 
+If you want more PGNs to train from, and have already trained on the entire CCRL Dataset, here's another training set of human players:
+https://database.nikonoel.fr
+
 For tips on how to use reformat.py, reference the bottom of the reformat.py, which has all the arguments that reformat offers. Reformat automatically uses the number of threads that your system supports. It should take no more than 60 minutes to download the CCRL Dataset, and reformat all th files using reformat on a modern system.
 
 For train.py, if you have access to an NVIDIA GPU, than you can leave the settings as is. You should have a fully trained chess engine that plays at 2700-2900 ELO in about seven days on a consumer GPU like a 3090 or 4080. If you don't have access to a high end GPU, you might want to decrease the size of the model that's being trained for, by decreasing the number of blocks and filters. You might want to decrease the number of epochs to 50-100 instead of 500 as well, since you'll notice diminishing returns as number of epochs increases.
