@@ -96,7 +96,7 @@ def train_distributed(rank, world_size, args):
     optimizer = optim.Adam(alphaZeroNet.parameters(), lr=args.learning_rate)
     
     # Optional: Use mixed precision training for better performance
-    scaler = torch.cuda.amp.GradScaler() if args.mixed_precision and torch.cuda.is_available() else None
+    scaler = torch.amp.GradScaler() if args.mixed_precision and torch.cuda.is_available() else None
     
     if rank == 0:
         print('Starting distributed training')
