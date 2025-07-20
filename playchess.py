@@ -5,7 +5,7 @@ import MCTS
 import torch
 import AlphaZeroNetwork
 import time
-from device_utils import get_optimal_device, optimize_for_device
+from device_utils import get_optimal_device, optimize_for_device, get_gpu_count
 
 def tolist( move_generator ):
     """
@@ -22,30 +22,82 @@ def tolist( move_generator ):
         moves.append( move )
     return moves
 
-def main( modelFile, mode, color, num_rollouts, num_threads, fen, verbose ):
+def load_model_multi_gpu(model_file, gpu_ids=None):
+    """
+    Load model on specified GPUs or automatically select GPUs.
     
-    # Get optimal device
-    device, device_str = get_optimal_device()
-    print(f'Using device: {device_str}')
+    Args:
+        model_file: Path to model file
+        gpu_ids: List of GPU IDs to use, or None for auto-selection
     
-    #prepare neural network
-    alphaZeroNet = AlphaZeroNetwork.AlphaZeroNet( 20, 256 )
-
-    # Load weights with proper device mapping
-    if device.type == 'cpu':
-        weights = torch.load( modelFile, map_location=torch.device('cpu') )
-    else:
-        weights = torch.load( modelFile, map_location=device )
-
+    Returns:
+        models: List of models (one per GPU)
+        devices: List of devices
+    """
+    available_gpus = get_gpu_count()
     
+    if gpu_ids is None:
+        # Auto-select: use first GPU for single GPU, or all for multi-GPU
+        if available_gpus > 0:
+            gpu_ids = [0]  # Default to single GPU for compatibility
+        else:
+            gpu_ids = []
+    
+    if not gpu_ids or available_gpus == 0:
+        # CPU fallback
+        device, device_str = get_optimal_device()
+        print(f'Using device: {device_str}')
+        
+        model = AlphaZeroNetwork.AlphaZeroNet(20, 256)
+        weights = torch.load(model_file, map_location=device)
+        model.load_state_dict(weights)
+        model = optimize_for_device(model, device)
+        model.eval()
+        
+        for param in model.parameters():
+            param.requires_grad = False
+            
+        return [model], [device]
+    
+    # Multi-GPU setup
+    models = []
+    devices = []
+    
+    for gpu_id in gpu_ids:
+        if gpu_id >= available_gpus:
+            print(f"Warning: GPU {gpu_id} not available, skipping")
+            continue
+            
+        device = torch.device(f'cuda:{gpu_id}')
+        devices.append(device)
+        
+        model = AlphaZeroNetwork.AlphaZeroNet(20, 256)
+        weights = torch.load(model_file, map_location=device)
+        model.load_state_dict(weights)
+        model.to(device)
+        model.eval()
+        
+        for param in model.parameters():
+            param.requires_grad = False
+        
+        models.append(model)
+        print(f'Loaded model on GPU {gpu_id}: {torch.cuda.get_device_name(gpu_id)}')
+    
+    return models, devices
 
-    alphaZeroNet.load_state_dict( weights )
-    alphaZeroNet = optimize_for_device(alphaZeroNet, device)
-
-    for param in alphaZeroNet.parameters():
-        param.requires_grad = False
-
-    alphaZeroNet.eval()
+def main( modelFile, mode, color, num_rollouts, num_threads, fen, verbose, gpu_ids=None ):
+    
+    # Load models (supports multi-GPU)
+    models, devices = load_model_multi_gpu(modelFile, gpu_ids)
+    
+    # For backward compatibility, use first model/device for single GPU mode
+    alphaZeroNet = models[0]
+    device = devices[0]
+    
+    # Print GPU usage info
+    if len(models) > 1:
+        print(f'Using {len(models)} GPUs for neural network evaluation')
+        print('Note: Multi-GPU support requires playchess_multigpu.py for full parallelization')
    
     #create chess board object
     if fen:
@@ -153,8 +205,14 @@ if __name__=='__main__':
     parser.add_argument( '--threads', type=int, help='Number of threads used per rollout' )
     parser.add_argument( '--verbose', help='Print search statistics', action='store_true' )
     parser.add_argument( '--fen', help='Starting fen' )
+    parser.add_argument( '--gpus', help='Comma-separated list of GPU IDs to use (e.g., "0,1,2")')
     parser.set_defaults( verbose=False, mode='p', color='w', rollouts=10, threads=1 )
     parser = parser.parse_args()
+    
+    # Parse GPU IDs if provided
+    gpu_ids = None
+    if parser.gpus:
+        gpu_ids = [int(gpu_id.strip()) for gpu_id in parser.gpus.split(',')]
 
-    main( parser.model, parser.mode, parseColor( parser.color ), parser.rollouts, parser.threads, parser.fen, parser.verbose )
+    main( parser.model, parser.mode, parseColor( parser.color ), parser.rollouts, parser.threads, parser.fen, parser.verbose, gpu_ids )
 
