@@ -103,16 +103,20 @@ class MultiGPUMCTS:
             with torch.no_grad():
                 # Encode all positions
                 encoded_batch = []
+                mask_batch = []
                 for board in batch:
                     position, mask = encoder.encodePositionForInference(board)
                     encoded = torch.from_numpy(position).unsqueeze(0)
                     encoded_batch.append(encoded)
+                    mask_tensor = torch.from_numpy(mask).unsqueeze(0)
+                    mask_batch.append(mask_tensor)
                 
                 # Stack and move to GPU
                 positions = torch.cat(encoded_batch, dim=0).to(device)
+                masks = torch.cat(mask_batch, dim=0).to(device)
                 
                 # Neural network forward pass
-                values, policies = model(positions)
+                values, policies = model(positions, policyMask=masks)
                 
                 # Process results
                 values = values.cpu().numpy()
