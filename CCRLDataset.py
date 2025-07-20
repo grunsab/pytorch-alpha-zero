@@ -60,8 +60,17 @@ class CCRLDataset( Dataset ):
         pgn_file_name = os.path.join( self.ccrl_dir, pgn_file_name )
         pgn_fh = open( pgn_file_name )
         game = chess.pgn.read_game( pgn_fh )
+        pgn_fh.close()
+        
+        if game is None:
+            # Try next file if this one failed to parse
+            return self.__getitem__((idx + 1) % len(self))
 
         moves = tolist( game.mainline_moves() )
+        
+        if len(moves) < 2:
+            # Need at least 2 moves to get a position and next move
+            return self.__getitem__((idx + 1) % len(self))
 
         randIdx = int( np.random.random() * ( len( moves ) - 1 ) )
 
@@ -73,6 +82,10 @@ class CCRLDataset( Dataset ):
                 next_move = moves[ idx + 1 ]
                 break
 
+        if 'Result' not in game.headers:
+            # Skip games without result
+            return self.__getitem__((idx + 1) % len(self))
+            
         winner = encoder.parseResult( game.headers[ 'Result' ] )
 
         position, policy, value, mask = encoder.encodeTrainingPoint( board, next_move, winner )
