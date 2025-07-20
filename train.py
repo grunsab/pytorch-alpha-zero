@@ -12,7 +12,7 @@ from device_utils import get_optimal_device, optimize_for_device, get_batch_size
 num_epochs = 500
 num_blocks = 20
 num_filters = 256
-ccrl_dir = os.path.abspath('ccrl/reformatted/')  # Use expanduser for cross-platform compatibility
+ccrl_dir = os.path.abspath('cclr/reformatted/')  # Use expanduser for cross-platform compatibility
 logmode=True
 
 def train():
