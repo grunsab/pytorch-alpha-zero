@@ -124,7 +124,7 @@ class MultiGPUMCTS:
                 
                 # Send results back
                 for i, batch_id in enumerate(batch_ids):
-                    value = float(values[i])
+                    value = float(values[i, 0])  # Extract scalar from (batch_size, 1) array
                     policy = policies[i]
                     move_probs = encoder.decodePolicyOutput(batch[i], policy)
                     
