@@ -104,7 +104,8 @@ class MultiGPUMCTS:
                 # Encode all positions
                 encoded_batch = []
                 for board in batch:
-                    encoded = encoder.encodePositionForInference(board).unsqueeze(0)
+                    position, mask = encoder.encodePositionForInference(board)
+                    encoded = torch.from_numpy(position).unsqueeze(0)
                     encoded_batch.append(encoded)
                 
                 # Stack and move to GPU
