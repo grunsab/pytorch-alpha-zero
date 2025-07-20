@@ -32,7 +32,7 @@ def train():
     alphaZeroNet = AlphaZeroNet( num_blocks, num_filters )
     alphaZeroNet = optimize_for_device(alphaZeroNet, device)
     
-    optimizer = optim.Adam( alphaZeroNet.parameters(), lr=0.0005 )
+    optimizer = optim.Adam( alphaZeroNet.parameters(), lr=0.0002 )
     mseLoss = nn.MSELoss()
 
     print( 'Starting training' )
