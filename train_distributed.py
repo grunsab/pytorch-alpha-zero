@@ -203,7 +203,7 @@ def main():
                         help='Total batch size across all GPUs')
     parser.add_argument('--num-workers', type=int, default=None,
                         help='Number of data loading workers')
-    parser.add_argument('--learning-rate', type=float, default=0.0002,
+    parser.add_argument('--learning-rate', type=float, default=0.00033,
                         help='Learning rate for optimizer')
     parser.add_argument('--mixed-precision', action='store_true',
                         help='Use mixed precision training (requires GPU)')
