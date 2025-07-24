@@ -19,7 +19,7 @@ python3 playchess.py --model weights/AlphaZeroNet_20x256.pt --mode p --rollouts 
 ### Training
 ```bash
 # Preprocess CCRL dataset (required first)
-python reformat.py input.pgn ~/ccrl/reformated
+python reformat.py input.pgn ccrl/reformated
 
 # Train the model
 python train.py

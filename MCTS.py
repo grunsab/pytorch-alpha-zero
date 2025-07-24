@@ -300,20 +300,29 @@ class Edge:
    
 class Root( Node ):
 
-    def __init__( self, board, neuralNetwork ):
+    def __init__( self, board, neuralNetwork, reuse_subtree=None ):
         """
         Create the root of the search tree.
 
         Args:
             board (chess.Board) the chess position
             neuralNetwork (torch.nn.Module) the neural network
+            reuse_subtree (Node) optional node to reuse as root (for pondering)
 
         """
-        value, move_probabilities = encoder.callNeuralNetwork( board, neuralNetwork )
+        if reuse_subtree is not None:
+            # Reuse existing subtree as root
+            self._lock = reuse_subtree._lock
+            self.N = reuse_subtree.N
+            self.sum_Q = reuse_subtree.sum_Q
+            self.edges = reuse_subtree.edges
+        else:
+            # Create new root from scratch
+            value, move_probabilities = encoder.callNeuralNetwork( board, neuralNetwork )
 
-        Q = value / 2. + 0.5
+            Q = value / 2. + 0.5
 
-        super().__init__( board, Q, move_probabilities )
+            super().__init__( board, Q, move_probabilities )
 
         self.same_paths = 0
         
@@ -507,5 +516,33 @@ class Root( Node ):
         if self.thread_pool is not None:
             self.thread_pool.shutdown(wait=True)
             self.thread_pool = None
+    
+    def getBestMoveChild(self):
+        """
+        Get the child node corresponding to the best move.
+        Returns:
+            (Node, chess.Move) tuple of child node and the move, or (None, None) if no moves
+        """
+        best_edge = self.maxNSelect()
+        if best_edge and best_edge.has_child():
+            return best_edge.getChild(), best_edge.getMove()
+        return None, None
+    
+    def getSecondBestMove(self):
+        """
+        Get the second best move for pondering.
+        Returns:
+            (chess.Move) the second best move or None
+        """
+        if len(self.edges) < 2:
+            return None
+            
+        # Sort edges by visit count
+        sorted_edges = sorted(self.edges, key=lambda e: e.getN(), reverse=True)
+        
+        # Return second best if it has reasonable visits
+        if len(sorted_edges) >= 2 and sorted_edges[1].getN() > 0:
+            return sorted_edges[1].getMove()
+        return None
 
 
