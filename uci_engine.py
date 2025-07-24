@@ -154,6 +154,14 @@ class UCIEngine:
         self.best_move = None
         self.move_overhead = 30  # Default move overhead in milliseconds
         
+        # Pondering support
+        self.pondering = False
+        self.ponder_enabled = False  # Whether pondering is enabled
+        self.ponder_move = None
+        self.ponder_hit = threading.Event()
+        self.saved_root = None  # Store MCTS tree for reuse
+        self.ponder_board = None  # Board position being pondered
+        
     def load_model(self):
         """Load the neural network model."""
         try:
@@ -217,6 +225,7 @@ class UCIEngine:
         print("option name Model type string default AlphaZeroNet_20x256_distributed.pt")
         print("option name Verbose type check default false")
         print("option name Move Overhead type spin default 30 min 0 max 5000")
+        print("option name Ponder type check default false")
         print("uciok")
         sys.stdout.flush()
         
@@ -238,6 +247,11 @@ class UCIEngine:
         """
         if len(args) < 1:
             return
+            
+        # Clear any saved pondering data when position changes
+        self.saved_root = None
+        self.ponder_board = None
+        self.ponder_move = None
             
         if args[0] == "startpos":
             self.board = chess.Board()
@@ -262,15 +276,18 @@ class UCIEngine:
                     if self.verbose:
                         print(f"info string Invalid move: {move_str}")
                         
-    def search_position(self, rollouts):
+    def search_position(self, rollouts, ponder=False):
         """
         Search current position using MCTS.
         
         Args:
             rollouts: Number of rollouts to perform
+            ponder: Whether this is a pondering search
         """
         self.stop_search.clear()
+        self.ponder_hit.clear()
         self.best_move = None
+        self.pondering = ponder
         
         try:
             # Check if we have a model
@@ -280,7 +297,27 @@ class UCIEngine:
                 return
                 
             with torch.no_grad():
-                root = MCTS.Root(self.board, self.model)
+                # Check if we can reuse the tree from pondering
+                if not ponder and self.saved_root and self.ponder_board and self.ponder_move:
+                    # Check if the current position matches our pondered position
+                    if self.board == self.ponder_board:
+                        # Reuse the pondered tree
+                        root = self.saved_root
+                        if self.verbose:
+                            print(f"info string Reusing pondered tree with {root.getN()} existing nodes")
+                            sys.stdout.flush()
+                    else:
+                        # Position doesn't match, create new root
+                        root = MCTS.Root(self.board, self.model)
+                        self.saved_root = None
+                else:
+                    # Create new root
+                    root = MCTS.Root(self.board, self.model)
+                
+                # Clear saved tree if not pondering
+                if not ponder:
+                    self.saved_root = None
+                    self.ponder_board = None
                 
                 # Perform rollouts
                 # parallelRollouts performs 'threads' rollouts per call
@@ -289,15 +326,28 @@ class UCIEngine:
                 remainder = rollouts % self.threads
                 
                 start_time = time.time()
+                iterations_done = 0
                 
                 for i in range(num_iterations):
                     if self.stop_search.is_set():
                         break
+                    
+                    # For pondering, check if we got a ponder hit
+                    if ponder and self.ponder_hit.is_set():
+                        # We got ponderhit but we're in infinite analysis mode
+                        # Just keep going until stop is called
+                        ponder = False
+                        self.pondering = False
+                        if self.verbose:
+                            print(f"info string Ponder hit! Continuing search...")
+                            sys.stdout.flush()
+                    
                     root.parallelRollouts(self.board.copy(), self.model, self.threads)
+                    iterations_done += 1
                     
                     # Output progress periodically
-                    if (i + 1) % max(1, num_iterations // 10) == 0 or i == num_iterations - 1:
-                        current_rollouts = (i + 1) * self.threads
+                    if (iterations_done) % max(1, num_iterations // 10) == 0 or i == num_iterations - 1:
+                        current_rollouts = iterations_done * self.threads
                         current_edge = root.maxNSelect()
                         if current_edge:
                             move = current_edge.getMove()
@@ -309,10 +359,11 @@ class UCIEngine:
                 
                 # Handle remainder rollouts if any
                 if remainder > 0 and not self.stop_search.is_set():
-                    root.parallelRollouts(self.board.copy(), self.model, remainder)
+                    if not (ponder and not self.ponder_hit.is_set()):
+                        root.parallelRollouts(self.board.copy(), self.model, remainder)
                 
                 elapsed_time = time.time() - start_time
-                actual_rollouts = num_iterations * self.threads + (remainder if remainder > 0 else 0)
+                actual_rollouts = iterations_done * self.threads + (remainder if remainder > 0 else 0)
                 
                 # Update time manager with actual performance
                 if elapsed_time > 0:
@@ -323,14 +374,40 @@ class UCIEngine:
                 if edge:
                     self.best_move = edge.getMove()
                     
+                    # Get ponder move (second best or opponent's best response)
+                    if not ponder:
+                        # Save tree for potential pondering
+                        child_node, _ = root.getBestMoveChild()
+                        if child_node:
+                            # Get opponent's best response
+                            opponent_edge = child_node.maxNSelect()
+                            if opponent_edge:
+                                self.ponder_move = opponent_edge.getMove()
+                        
+                        # Alternative: use second best move from current position
+                        if not self.ponder_move:
+                            self.ponder_move = root.getSecondBestMove()
+                    
                     if self.verbose:
                         print(f"info string Completed {actual_rollouts} rollouts in {elapsed_time:.2f}s")
                         print(f"info string Rollouts per second: {actual_rollouts/elapsed_time:.1f}")
                         print(root.getStatisticsString())
                         sys.stdout.flush()
-                        
-                # Clean up
-                root.cleanup()
+                
+                # Save tree if we're pondering
+                if ponder and self.best_move:
+                    # Save the current tree for reuse
+                    self.saved_root = root
+                    self.ponder_board = self.board.copy()
+                    if self.verbose:
+                        print(f"info string Saving pondered tree with {root.getN()} nodes")
+                        sys.stdout.flush()
+                    # Don't cleanup the root since we're saving it
+                    return
+                
+                # Clean up if not saving for ponder
+                if not ponder or not self.best_move:
+                    root.cleanup()
                 
         except Exception as e:
             print(f"info string Error during search: {e}")
@@ -353,6 +430,7 @@ class UCIEngine:
         movestogo = 0
         movetime = None
         infinite = False
+        ponder = False
         
         i = 0
         while i < len(args):
@@ -377,12 +455,15 @@ class UCIEngine:
             elif args[i] == "infinite":
                 infinite = True
                 i += 1
+            elif args[i] == "ponder":
+                ponder = True
+                i += 1
             else:
                 i += 1
                 
         # Calculate rollouts based on time
-        if infinite:
-            rollouts = 10000  # High number for analysis
+        if infinite or ponder:
+            rollouts = 10000  # High number for analysis/pondering
         elif movetime:
             # Fixed time per move
             time_sec = movetime / 1000.0
@@ -401,20 +482,30 @@ class UCIEngine:
             )
             
         if self.verbose:
-            print(f"info string Calculating with {rollouts} rollouts")
+            if ponder:
+                print(f"info string Pondering with {rollouts} rollouts")
+            else:
+                print(f"info string Calculating with {rollouts} rollouts")
             
         # Start search in separate thread
         self.search_thread = threading.Thread(
-            target=self.search_position, args=(rollouts,)
+            target=self.search_position, args=(rollouts, ponder)
         )
         self.search_thread.start()
         
-        # Wait for search to complete
+        # If pondering, return immediately without waiting
+        if ponder:
+            return
+            
+        # Wait for search to complete (normal search)
         self.search_thread.join()
         
         # Output best move
         if self.best_move:
-            print(f"bestmove {self.best_move}")
+            if self.ponder_move and self.ponder_enabled:
+                print(f"bestmove {self.best_move} ponder {self.ponder_move}")
+            else:
+                print(f"bestmove {self.best_move}")
         else:
             # Fallback: pick first legal move
             legal_moves = list(self.board.legal_moves)
@@ -427,9 +518,47 @@ class UCIEngine:
         self.stop_search.set()
         if self.search_thread and self.search_thread.is_alive():
             self.search_thread.join()
+        
+        # If we were pondering, clear the pondering state
+        if self.pondering:
+            self.pondering = False
+            self.saved_root = None
+            self.ponder_board = None
+            
         if self.best_move:
-            print(f"bestmove {self.best_move}")
+            if self.ponder_move and not self.pondering and self.ponder_enabled:
+                print(f"bestmove {self.best_move} ponder {self.ponder_move}")
+            else:
+                print(f"bestmove {self.best_move}")
             sys.stdout.flush()
+    
+    def ponderhit(self):
+        """Handle 'ponderhit' command - continue search from pondering."""
+        if self.pondering:
+            # Check if the current position matches what we were pondering
+            if self.ponder_board and self.board == self.ponder_board:
+                # Signal the search thread to continue with normal time management
+                self.ponder_hit.set()
+                if self.verbose:
+                    print("info string Ponderhit received, continuing search...")
+                    sys.stdout.flush()
+            else:
+                # Position doesn't match - stop the ponder and start fresh
+                if self.verbose:
+                    print("info string Ponderhit received but position doesn't match pondered position")
+                    sys.stdout.flush()
+                self.stop_search.set()
+                if self.search_thread and self.search_thread.is_alive():
+                    self.search_thread.join()
+                # Output bestmove from the interrupted ponder
+                if self.best_move:
+                    print(f"bestmove {self.best_move}")
+                    sys.stdout.flush()
+        else:
+            # If not pondering, this is an error but we handle it gracefully
+            if self.verbose:
+                print("info string Warning: ponderhit received but not pondering")
+                sys.stdout.flush()
             
     def quit(self):
         """Handle 'quit' command."""
@@ -476,6 +605,8 @@ class UCIEngine:
                 self.move_overhead = int(value)
             except:
                 pass
+        elif name == "ponder":
+            self.ponder_enabled = value.lower() in ["true", "yes", "1"]
             
     def run(self):
         """Main UCI protocol loop."""
@@ -505,6 +636,12 @@ class UCIEngine:
                 elif command == "ucinewgame":
                     # Reset board for new game
                     self.board = chess.Board()
+                    # Clear any saved pondering data
+                    self.saved_root = None
+                    self.ponder_board = None
+                    self.ponder_move = None
+                elif command == "ponderhit":
+                    self.ponderhit()
                 elif self.verbose:
                     print(f"info string Unknown command: {command}")
                     sys.stdout.flush()
