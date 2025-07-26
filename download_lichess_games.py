@@ -128,8 +128,6 @@ def extract_and_verify_time_controls(pgn_headers, min_seconds=180):
 
     if time_control_match:
         initial_time, increment = time_control_match.groups()
-        print(f"Initial Time (seconds): {initial_time}")
-        print(f"Increment (seconds): {increment}")
     else:
         print("Time Control not found or in a different format.")
         return False
