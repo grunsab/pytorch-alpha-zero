@@ -134,7 +134,7 @@ def extract_and_verify_time_controls(pgn_headers, min_seconds=180):
         print("Time Control not found or in a different format.")
         return False
 
-    return initial_time >= 180
+    return int(initial_time) >= 180
 
 
 def filter_games_by_rating_and_time_control(input_file, output_file, min_rating=2750, min_seconds=180):
