@@ -97,7 +97,7 @@ def download_file(url_filename_pairs, chunk_size=8192):
 def parallel_download_mp(url_filename_pairs):
     """Downloads multiple files in parallel using multiprocessing.Pool."""
     num_processes = cpu_count() - 1 if cpu_count() > 1 else 1 # Use one less than available CPUs
-    num_processes = min(num_processes, len(url_filename_pairs))
+    num_processes = max(num_processes, len(url_filename_pairs))
     with Pool(processes=num_processes) as pool:
         pool.map(download_file, url_filename_pairs)
 
@@ -165,7 +165,7 @@ def process_pgn_chunk(args):
     return games_written
 
 
-def process_single_huge_pgn(input_file, output_dir, num_processes=None, approx_games=None):
+def process_single_huge_pgn(input_file, output_dir, num_processes=100):
     """
     Reformat a single large PGN file into individual game files using multiprocessing.
     
@@ -182,16 +182,12 @@ def process_single_huge_pgn(input_file, output_dir, num_processes=None, approx_g
     
     print(f"Reformatting {input_file} to {output_dir} using {num_processes} processes")
     
-    # Count games if not provided
-    if approx_games is None:
-        print("Counting games in file...")
-        start_count = time.time()
-        total_games = count_games_in_pgn_fast(input_file)
-        count_time = time.time() - start_count
-        print(f"Found {total_games} games to process (counting took {count_time:.2f}s)")
-    else:
-        total_games = approx_games
-        print(f"Using approximate game count: {total_games}")
+    # Count games
+    print("Counting games in file...")
+    start_count = time.time()
+    total_games = count_games_in_pgn_fast(input_file)
+    count_time = time.time() - start_count
+    print(f"Found {total_games} games to process (counting took {count_time:.2f}s)")
     
     if total_games == 0:
         print("No games found in file")
