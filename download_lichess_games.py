@@ -32,7 +32,7 @@ except ImportError:
 
 MIN_RATING = 2850
 
-
+import uuid
 
 
 def count_games_in_pgn_fast(input_file):
@@ -147,7 +147,8 @@ def process_pgn_chunk(args):
                 break
             
             if extract_and_verify_rating(game) and verify_time_controls(game) and verify_game_termination(game):
-                output_file = os.path.join(output_dir, f'{offset + i}.pgn')
+                unique_filename = str(uuid.uuid4())
+                output_file = os.path.join(output_dir, f'{unique_filename}.pgn')
                 with open(output_file, 'w') as game_fh:
                     print(game, file=game_fh, end='\n\n')
                 games_written += 1
