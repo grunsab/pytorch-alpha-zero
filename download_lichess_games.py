@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Download and filter grandmaster-level chess games from Lichess database.
-Filters games where both players have ratings >= 2750 (grandmaster level).
+Filters games where both players have ratings >= 2850 (grandmaster level).
 """
 
 import requests
@@ -30,7 +30,7 @@ try:
 except ImportError:
     TQDM_AVAILABLE = False
 
-MIN_RATING = 2750
+MIN_RATING = 2850
 
 
 def count_games_in_pgn_fast(input_file):
@@ -92,6 +92,24 @@ def extract_and_verify_rating(game, ):
     white_rating, black_rating = int(game.headers['WhiteElo']), int(game.headers['BlackElo'])
     return (white_rating >= MIN_RATING and black_rating >= MIN_RATING)
 
+def verify_time_controls(game, min_seconds=180):
+    time_control = game.headers['[TimeControl']
+    if not time_control:
+        return False
+    # Parse time control formats like "180+0", "300+2", etc.
+    try:
+        parts = time_control.split('+')
+        base_time = int(parts[0])
+        return base_time >= min_seconds
+    except:
+        return False
+
+def verify_game_termination(game):
+    termination = game.headers['Termination']
+    if not termination:
+        return False
+    else:
+        return termination == "Normal"
 
 def process_pgn_chunk(args):
     """
@@ -116,7 +134,7 @@ def process_pgn_chunk(args):
             if not game:
                 break
             
-            if extract_and_verify_rating(game):
+            if extract_and_verify_rating(game) and verify_time_controls(game) and verify_game_termination(game):
                 output_file = os.path.join(output_dir, f'{offset + i}.pgn')
                 with open(output_file, 'w') as game_fh:
                     print(game, file=game_fh, end='\n\n')
@@ -213,16 +231,18 @@ def process_single_huge_pgn(input_file, output_dir, num_processes=None, approx_g
     total_written = sum(results)
     elapsed_time = time.time() - start_time
     
-    print(f'Completed reformatting: {total_written} total games in {elapsed_time:.2f} seconds')
+    print(f'Completed processing and reformatting: {total_written} total games in {elapsed_time:.2f} seconds')
     print(f'Processing speed: {total_written/elapsed_time:.2f} games/second')
+
+    return total_written, total_games
 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download and filter master-level games from Lichess")
+    parser = argparse.ArgumentParser(description="Download and filter grandmaster-level games from Lichess")
     parser.add_argument('--months', type=int, default=1, help='Number of months to download (default: 1)')
-    parser.add_argument('--min-rating', type=int, default=2750, help='Minimum rating for both players (default: 2750)')
-    parser.add_argument('--output-dir', default='games_training_data', help='Output directory (default: games_training_data)')
+    parser.add_argument('--min-rating', type=int, default=2850, help='Minimum rating for both players (default: 2850)')
+    parser.add_argument('--output-dir', default='games_training_data/reformatted', help='Output directory (default: games_training_data)')
     parser.add_argument('--skip-download', action='store_true', help='Skip download and only filter existing files')
     
     args = parser.parse_args()
@@ -268,7 +288,7 @@ def main():
     total_kept = 0
     total_processed = 0
     
-    MIN_RATING = args.min_rating or 2750
+    MIN_RATING = args.min_rating or 2850
 
     # Process all .pgn.zst files in the output directory
     for filename in sorted(os.listdir(args.output_dir)):
@@ -283,18 +303,14 @@ def main():
 
             input_path_for_parsing = output_path_for_extraction
 
-            output_path_for_parsing = os.path.join(args.output_dir, f"filtered_{args.min_rating}+_{filename.replace('.zst', '')}")
-            
-            if os.path.exists(output_path_for_parsing):
-                print(f"\n{output_path_for_parsing} already exists, skipping...")
-                continue
-            
+            output_directory = os.path.join(args.output_dir)
+                        
             print(f"\nProcessing {new_filename}...")
-            kept, processed = process_single_huge_pgn(input_path_for_parsing, output_path_for_parsing, args.min_rating)
+            kept, processed = process_single_huge_pgn(input_path_for_parsing, output_directory, args.min_rating)
             
 
             # Delete uncompressed unfiltered PGN file after processing it to save space
-            os.remove(output_path_for_extraction)
+            os.remove(input_path_for_parsing)
 
             total_kept += kept
             total_processed += processed
