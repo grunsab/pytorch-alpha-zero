@@ -43,7 +43,7 @@ def count_games_in_pgn_fast(input_file):
     Each game ends with a Result tag.
     """
     count = 0
-    with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
+    with zstd.open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
         for line in f:
             if line.startswith('[Result '):
                 count += 1
