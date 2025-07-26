@@ -308,7 +308,7 @@ def main():
             input_path_for_parsing = input_path_for_extraction
             output_directory = os.path.join(args.output_dir)
             print(f"\nProcessing {filename}...")
-            kept, processed = process_single_huge_pgn(input_path_for_parsing, output_directory, args.min_rating)
+            kept, processed = process_single_huge_pgn(input_path_for_parsing, output_directory)
             
             total_kept += kept
             total_processed += processed
