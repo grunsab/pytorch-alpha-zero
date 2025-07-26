@@ -341,7 +341,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download and filter grandmaster-level games from Lichess")
     parser.add_argument('--months', type=int, default=1, help='Number of months to download (default: 1)')
     parser.add_argument('--min-rating', type=int, default=2750, help='Minimum rating for both players (default: 2750)')
-    parser.add_argument('--output-dir', default='games_training_data/reformatted', help='Output directory (default: games_training_data/reformatted)')
+    parser.add_argument('--output-dir', default='games_training_data/unprocessed', help='Output directory (default: games_training_data/reformatted)')
     parser.add_argument('--skip-download', action='store_true', help='Skip download and only filter existing files')
     parser.add_argument('--output-dir-downloads', default='games_training_data/', help='Output directory to store LiChess Databases (default: games_training_data)')
 
