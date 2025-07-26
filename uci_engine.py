@@ -153,6 +153,7 @@ class UCIEngine:
         self.stop_search = threading.Event()
         self.best_move = None
         self.move_overhead = 30  # Default move overhead in milliseconds
+        self.position_history = []  # Track board positions to detect repetition
         
     def load_model(self):
         """Load the neural network model."""
@@ -229,6 +230,57 @@ class UCIEngine:
         print("readyok")
         sys.stdout.flush()
         
+    def get_position_key(self, board):
+        """
+        Get a position key for repetition detection.
+        Includes piece placement, castling rights, en passant, and side to move.
+        Excludes halfmove clock and fullmove number.
+        """
+        fen_parts = board.fen().split()
+        # Return first 4 parts: pieces, side, castling, en passant
+        return " ".join(fen_parts[:4])
+        
+    def would_cause_repetition(self, board, move):
+        """
+        Check if playing this move would cause threefold repetition.
+        
+        Args:
+            board: Current board position
+            move: Move to check
+            
+        Returns:
+            bool: True if move would cause threefold repetition
+        """
+        # Create a test board and apply the move
+        test_board = board.copy()
+        test_board.push(move)
+        
+        # Get the position key for the resulting position
+        position_key = self.get_position_key(test_board)
+        
+        # Count how many times this position has already occurred
+        count = self.position_history.count(position_key)
+        
+        # If position already occurred twice, this would be the third time
+        return count >= 2
+        
+    def get_sorted_moves(self, root):
+        """
+        Get moves sorted by visit count (highest first).
+        
+        Args:
+            root: MCTS root node
+            
+        Returns:
+            List of (move, visit_count) tuples sorted by visit count
+        """
+        # Get edges from root and sort by visit count
+        edges = root.edges.copy()
+        edges.sort(key=lambda edge: edge.getN(), reverse=True)
+        
+        # Return moves with their visit counts, excluding unvisited moves
+        return [(edge.getMove(), edge.getN()) for edge in edges if edge.getN() > 0]
+        
     def position(self, args):
         """
         Handle 'position' command.
@@ -239,6 +291,9 @@ class UCIEngine:
         if len(args) < 1:
             return
             
+        # Clear position history when setting up a new position
+        self.position_history = []
+        
         if args[0] == "startpos":
             self.board = chess.Board()
             moves_start = 1
@@ -251,6 +306,9 @@ class UCIEngine:
         else:
             return
             
+        # Add initial position to history
+        self.position_history.append(self.get_position_key(self.board))
+        
         # Apply moves if provided
         if len(args) > moves_start and args[moves_start] == "moves":
             for move_str in args[moves_start + 1:]:
@@ -258,6 +316,8 @@ class UCIEngine:
                     move = chess.Move.from_uci(move_str)
                     if move in self.board.legal_moves:
                         self.board.push(move)
+                        # Add position to history after each move
+                        self.position_history.append(self.get_position_key(self.board))
                 except:
                     if self.verbose:
                         print(f"info string Invalid move: {move_str}")
@@ -318,10 +378,28 @@ class UCIEngine:
                 if elapsed_time > 0:
                     self.time_manager.update_performance(actual_rollouts, elapsed_time)
                                 
-                # Get final best move
-                edge = root.maxNSelect()
-                if edge:
-                    self.best_move = edge.getMove()
+                # Get moves sorted by visit count
+                sorted_moves = self.get_sorted_moves(root)
+                
+                if sorted_moves:
+                    # Try to find a move that doesn't cause repetition
+                    best_non_repetition_move = None
+                    for move, visit_count in sorted_moves:
+                        if not self.would_cause_repetition(self.board, move):
+                            best_non_repetition_move = move
+                            if self.verbose and sorted_moves[0][0] != move:
+                                print(f"info string Avoiding repetition: {sorted_moves[0][0]} -> {move}")
+                                sys.stdout.flush()
+                            break
+                    
+                    # If all moves cause repetition, use the best move anyway
+                    if best_non_repetition_move:
+                        self.best_move = best_non_repetition_move
+                    else:
+                        self.best_move = sorted_moves[0][0]
+                        if self.verbose:
+                            print(f"info string Warning: All moves lead to repetition, using best move")
+                            sys.stdout.flush()
                     
                     if self.verbose:
                         print(f"info string Completed {actual_rollouts} rollouts in {elapsed_time:.2f}s")
@@ -503,8 +581,9 @@ class UCIEngine:
                 elif command == "setoption":
                     self.setoption(parts[1:])
                 elif command == "ucinewgame":
-                    # Reset board for new game
+                    # Reset board and position history for new game
                     self.board = chess.Board()
+                    self.position_history = []
                 elif self.verbose:
                     print(f"info string Unknown command: {command}")
                     sys.stdout.flush()
