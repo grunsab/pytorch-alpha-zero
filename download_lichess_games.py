@@ -390,17 +390,20 @@ def main():
     MIN_RATING = args.min_rating or 2750
 
     # Process all .pgn.zst files in the output directory
+
+    fName_count = 0
     for filename in sorted(os.listdir(args.output_dir_downloads)):
         if filename.endswith('.pgn.zst'):
             input_path_for_extraction = os.path.join(args.output_dir_downloads, filename)
             input_path_for_parsing = input_path_for_extraction
             output_directory = os.path.join(args.output_dir)
-            output_path = os.path.join(args.output_dir, f"filtered_{args.min_rating}+_{filename.replace('.zst', '')}")
+            output_path = os.path.join(args.output_dir, f"filtered_{args.min_rating}+_{fName_count}.pgn")
             print(f"\nProcessing {filename}...")
             kept, processed = filter_games_by_rating_and_time_control(input_path_for_parsing, output_path)
             
             total_kept += kept
             total_processed += processed
+            fName_count += 1
     
     print("\n" + "="*50)
     print("FINAL SUMMARY")
