@@ -178,7 +178,7 @@ def process_single_huge_pgn(input_file, output_dir, num_processes=None, approx_g
     os.makedirs(output_dir, exist_ok=True)
     
     if num_processes is None:
-        num_processes = min(mp.cpu_count(), 50)
+        num_processes = max(mp.cpu_count(), 100)
     
     print(f"Reformatting {input_file} to {output_dir} using {num_processes} processes")
     
