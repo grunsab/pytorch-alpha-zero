@@ -41,7 +41,7 @@ def count_games_in_pgn(input_file, force_fast=False):
     # Otherwise fall back to accurate counting
     count = 0
     with open(input_file, 'r') as pgn_fh:
-        while chess.pgn.read_game(pgn_fh):
+        while chess.pgn.skip_game(pgn_fh):
             count += 1
     return count
 
@@ -57,7 +57,7 @@ def process_pgn_chunk(args):
     with open(input_file, 'r') as pgn_fh:
         # Skip to the starting position
         for _ in range(start_idx):
-            game = chess.pgn.read_game(pgn_fh)
+            game = chess.pgn.skip_game(pgn_fh)
             if not game:
                 return 0
         
