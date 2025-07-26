@@ -21,7 +21,7 @@ import sys
 import argparse
 from pathlib import Path
 import multiprocessing as mp
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool, Manager, cpu_count
 import time
 from functools import partial
 try:
@@ -31,6 +31,8 @@ except ImportError:
     TQDM_AVAILABLE = False
 
 MIN_RATING = 2850
+
+
 
 
 def count_games_in_pgn_fast(input_file):
@@ -77,8 +79,10 @@ def get_available_databases():
     
     return sorted(matches, reverse=True)  # Most recent first
 
-def download_file(url, filepath, chunk_size=8192):
+def download_file(url_filename_pairs, chunk_size=8192):
     """Download a file with progress bar."""
+    url = url_filename_pairs[0]
+    filepath = url_filename_pairs[1]
     response = requests.get(url, stream=True)
     total_size = int(response.headers.get('content-length', 0))
     
@@ -87,6 +91,14 @@ def download_file(url, filepath, chunk_size=8192):
             for data in response.iter_content(chunk_size):
                 pbar.update(len(data))
                 f.write(data)
+
+def parallel_download_mp(url_filename_pairs):
+    """Downloads multiple files in parallel using multiprocessing.Pool."""
+    num_processes = cpu_count() - 1 if cpu_count() > 1 else 1 # Use one less than available CPUs
+    num_processes = min(num_processes, len(url_filename_pairs))
+    with Pool(processes=num_processes) as pool:
+        pool.map(download_file, url_filename_pairs)
+
 
 def extract_and_verify_rating(game, ):
     white_rating, black_rating = int(game.headers['WhiteElo']), int(game.headers['BlackElo'])
@@ -267,17 +279,16 @@ def main():
             print(f"  - {db}")
         
         # Download files
+
+        url_paths_and_fnames = []
+
         for db_path in databases_to_download:
             filename = os.path.basename(db_path)
             filepath = os.path.join(args.output_dir, filename)
-            
-            if os.path.exists(filepath):
-                print(f"\n{filename} already exists, skipping download...")
-                continue
-            
             url = LICHESS_DB_URL + db_path
-            print(f"\nDownloading {filename}...")
-            download_file(url, filepath)
+            url_paths_and_fnames.append((url, filepath))
+
+        parallel_download_mp(url_paths_and_fnames)
     
     # Filter downloaded files
     print("\n" + "="*50)
