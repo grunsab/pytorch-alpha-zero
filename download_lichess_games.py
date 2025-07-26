@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Download and filter grandmaster-level chess games from Lichess database.
-Filters games where both players have ratings >= 2750 (grandmaster level).
+Filters games where both players have ratings >= 2600 (grandmaster level).
 """
 
 import requests
@@ -30,7 +30,7 @@ try:
 except ImportError:
     TQDM_AVAILABLE = False
 
-MIN_RATING = 2750
+MIN_RATING = 2600
 
 import uuid
 import zstandard as zstd
@@ -135,7 +135,7 @@ def extract_and_verify_time_controls(pgn_headers, min_seconds=180):
     return int(initial_time) >= 180
 
 
-def filter_games_by_rating_and_time_control(input_file, output_file, min_rating=2750, min_seconds=180):
+def filter_games_by_rating_and_time_control(input_file, output_file, min_rating=2600, min_seconds=180):
     """Filter games where both players have rating >= min_rating."""
     
     games_processed = 0
@@ -338,7 +338,7 @@ def filter_games_by_rating_and_time_control(input_file, output_file, min_rating=
 def main():
     parser = argparse.ArgumentParser(description="Download and filter grandmaster-level games from Lichess")
     parser.add_argument('--months', type=int, default=1, help='Number of months to download (default: 1)')
-    parser.add_argument('--min-rating', type=int, default=2750, help='Minimum rating for both players (default: 2750)')
+    parser.add_argument('--min-rating', type=int, default=2600, help='Minimum rating for both players (default: 2600)')
     parser.add_argument('--output-dir', default='games_training_data/unprocessed', help='Output directory (default: games_training_data/reformatted)')
     parser.add_argument('--skip-download', action='store_true', help='Skip download and only filter existing files')
     parser.add_argument('--output-dir-downloads', default='games_training_data/', help='Output directory to store LiChess Databases (default: games_training_data)')
