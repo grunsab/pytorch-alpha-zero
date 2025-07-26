@@ -318,16 +318,41 @@ class UCIEngine:
                 if elapsed_time > 0:
                     self.time_manager.update_performance(actual_rollouts, elapsed_time)
                                 
-                # Get final best move
-                edge = root.maxNSelect()
-                if edge:
-                    self.best_move = edge.getMove()
+                # Get final best move, avoiding threefold repetition
+                # Sort edges by visit count (N) in descending order
+                sorted_edges = sorted(root.edges, key=lambda e: e.getN(), reverse=True)
+                
+                self.best_move = None
+                for edge in sorted_edges:
+                    if edge.getN() == 0:
+                        # Skip edges that were never visited
+                        continue
+                        
+                    move = edge.getMove()
+                    # Create a copy of the board and make the move
+                    test_board = self.board.copy()
+                    test_board.push(move)
                     
+                    # Check if this move would allow threefold repetition claim
+                    if not test_board.can_claim_threefold_repetition():
+                        # This move doesn't lead to threefold repetition, use it
+                        self.best_move = move
+                        if self.verbose:
+                            if edge != sorted_edges[0]:
+                                print(f"info string Avoided threefold repetition, selected alternative move: {move}")
+                        break
+                
+                # If all moves lead to threefold repetition, use the best one anyway
+                if self.best_move is None and sorted_edges:
+                    self.best_move = sorted_edges[0].getMove()
                     if self.verbose:
-                        print(f"info string Completed {actual_rollouts} rollouts in {elapsed_time:.2f}s")
-                        print(f"info string Rollouts per second: {actual_rollouts/elapsed_time:.1f}")
-                        print(root.getStatisticsString())
-                        sys.stdout.flush()
+                        print(f"info string Warning: All moves lead to threefold repetition, using best move anyway")
+                    
+                if self.verbose and self.best_move:
+                    print(f"info string Completed {actual_rollouts} rollouts in {elapsed_time:.2f}s")
+                    print(f"info string Rollouts per second: {actual_rollouts/elapsed_time:.1f}")
+                    print(root.getStatisticsString())
+                    sys.stdout.flush()
                         
                 # Clean up
                 root.cleanup()
@@ -416,10 +441,23 @@ class UCIEngine:
         if self.best_move:
             print(f"bestmove {self.best_move}")
         else:
-            # Fallback: pick first legal move
+            # Fallback: pick first legal move that doesn't cause threefold repetition
             legal_moves = list(self.board.legal_moves)
-            if legal_moves:
-                print(f"bestmove {legal_moves[0]}")
+            fallback_move = None
+            
+            for move in legal_moves:
+                test_board = self.board.copy()
+                test_board.push(move)
+                if not test_board.can_claim_threefold_repetition():
+                    fallback_move = move
+                    break
+            
+            # If all moves lead to threefold repetition, use the first legal move
+            if fallback_move is None and legal_moves:
+                fallback_move = legal_moves[0]
+                
+            if fallback_move:
+                print(f"bestmove {fallback_move}")
         sys.stdout.flush()
                 
     def stop(self):
