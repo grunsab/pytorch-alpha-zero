@@ -33,6 +33,8 @@ except ImportError:
 MIN_RATING = 2850
 
 import uuid
+import zstandard as zstd
+
 
 
 def count_games_in_pgn_fast(input_file):
@@ -132,7 +134,7 @@ def process_pgn_chunk(args):
     """
     input_file, output_dir, start_idx, end_idx, offset, counter, lock = args
     
-    with open(input_file, 'r') as pgn_fh:
+    with zstd.open(input_file, 'r') as pgn_fh:
         # Skip to the starting position
         for _ in range(start_idx):
             game = chess.pgn.skip_game(pgn_fh)
@@ -176,7 +178,7 @@ def process_single_huge_pgn(input_file, output_dir, num_processes=None, approx_g
     os.makedirs(output_dir, exist_ok=True)
     
     if num_processes is None:
-        num_processes = mp.cpu_count()
+        num_processes = min(mp.cpu_count(), 50)
     
     print(f"Reformatting {input_file} to {output_dir} using {num_processes} processes")
     
@@ -255,13 +257,14 @@ def main():
     parser = argparse.ArgumentParser(description="Download and filter grandmaster-level games from Lichess")
     parser.add_argument('--months', type=int, default=1, help='Number of months to download (default: 1)')
     parser.add_argument('--min-rating', type=int, default=2850, help='Minimum rating for both players (default: 2850)')
-    parser.add_argument('--output-dir', default='games_training_data/reformatted', help='Output directory (default: games_training_data)')
+    parser.add_argument('--output-dir', default='games_training_data/reformatted', help='Output directory (default: games_training_data/reformatted)')
     parser.add_argument('--skip-download', action='store_true', help='Skip download and only filter existing files')
-    
+    parser.add_argument('--output-dir-downloads', default='games_training_data/', help='Output directory to store LiChess Databases (default: games_training_data)')
+
     args = parser.parse_args()
     
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
+    # Create output directory downloads 
+    os.makedirs(args.output_dir_downloads, exist_ok=True)
     
     if not args.skip_download:
         # Get available databases
@@ -303,27 +306,14 @@ def main():
     MIN_RATING = args.min_rating or 2850
 
     # Process all .pgn.zst files in the output directory
-    for filename in sorted(os.listdir(args.output_dir)):
+    for filename in sorted(os.listdir(args.output_dir_downloads)):
         if filename.endswith('.pgn.zst'):
-            new_filename = filename.replace('.zst', '')
-            input_path_for_extraction = os.path.join(args.output_dir, filename)
-            output_path_for_extraction = os.path.join(args.output_dir, new_filename)
-            extract_zst(input_path_for_extraction, output_path_for_extraction)
-            
-            # Delete compressed pgn.zst to save space.
-            os.remove(input_path_for_extraction)
-
-            input_path_for_parsing = output_path_for_extraction
-
+            input_path_for_extraction = os.path.join(args.output_dir_downloads, filename)
+            input_path_for_parsing = input_path_for_extraction
             output_directory = os.path.join(args.output_dir)
-                        
-            print(f"\nProcessing {new_filename}...")
+            print(f"\nProcessing {filename}...")
             kept, processed = process_single_huge_pgn(input_path_for_parsing, output_directory, args.min_rating)
             
-
-            # Delete uncompressed unfiltered PGN file after processing it to save space
-            os.remove(input_path_for_parsing)
-
             total_kept += kept
             total_processed += processed
     
